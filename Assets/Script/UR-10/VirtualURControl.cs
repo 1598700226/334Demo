@@ -62,8 +62,12 @@ public class VirtualURControl : MonoBehaviour
     public double arm_6_init_angle = 180;
     public bool arm_6_angle_inverse = false;
 
-    private double gripper_min_value = double.MaxValue;  // 收到手控器夹爪的最小值数据，用于归一化
-    private double gripper_max_value = double.MinValue;  // 收到手控器夹爪的最大值数据，用于归一化
+    public double gripper_min_value = double.MaxValue;  // 收到手控器夹爪的最小值数据，用于归一化
+    public double gripper_max_value = double.MinValue;  // 收到手控器夹爪的最大值数据，用于归一化
+    public double hhrgripper_min_value = double.MaxValue;  // 收到手控器夹爪的最小值数据，用于归一化
+    public double hhrgripper_max_value = double.MinValue;  // 收到手控器夹爪的最大值数据，用于归一化
+    public double touchgripper_min_value = double.MaxValue;  // 收到手控器夹爪的最小值数据，用于归一化
+    public double touchgripper_max_value = double.MinValue;  // 收到手控器夹爪的最大值数据，用于归一化
 
     // Touch 手控器末端点
     [Header("Touch 手控器末端点")]
@@ -94,6 +98,8 @@ public class VirtualURControl : MonoBehaviour
     // 与外部手控器的通信
     private GameObject armControlSocket;
     public bool send_hand_force_sensors = false;
+    // 与自制手控器的通信
+    public GameObject hhrHCControl;
 
     // UI显示控件
     [Header("UI显示控件")]
@@ -181,7 +187,7 @@ public class VirtualURControl : MonoBehaviour
             // 右键 -> 闭合夹爪
             if (Input.GetKey(KeyCode.LeftArrow))
             {
-                Debug.Log(Vector3.Distance(gripper_1.transform.localPosition, gripper_2.transform.localPosition));
+                // Debug.Log(Vector3.Distance(gripper_1.transform.localPosition, gripper_2.transform.localPosition));
                 if (Vector3.Distance(gripper_1.transform.localPosition, gripper_2.transform.localPosition) <= 1.2f)
                 {
                     UpdateGripperStatus(gripper_1, gripper_keyboard_speed);
@@ -190,7 +196,7 @@ public class VirtualURControl : MonoBehaviour
             }
             if (Input.GetKey(KeyCode.RightArrow))
             {
-                Debug.Log(Vector3.Distance(gripper_1.transform.localPosition, gripper_2.transform.localPosition));
+                // Debug.Log(Vector3.Distance(gripper_1.transform.localPosition, gripper_2.transform.localPosition));
                 if (Vector3.Distance(gripper_1.transform.localPosition, gripper_2.transform.localPosition) >= 0.3f)
                 {
                     UpdateGripperStatus(gripper_1, -gripper_keyboard_speed);
@@ -245,8 +251,45 @@ public class VirtualURControl : MonoBehaviour
             armControlSocket.GetComponent<ControlBoxTcpSocketClient>().virtualArm_used = true;
         }
 
+        // 监听自制手控器消息
+        bool hhrHCEnable = hhrHCControl.GetComponent<HandControlToolControl>().isOpen;
+        if (hhrHCEnable)
+        {
+            int hhrHCMode = hhrHCControl.GetComponent<HandControlToolControl>().controlMode;
+            float hhrHCGripperDis = hhrHCControl.GetComponent<HandControlToolControl>().gripperDis;
+            if (hhrHCMode == 0)
+            {
+                //
+                positionIncrement = hhrHCControl.GetComponent<HandControlToolControl>().positionInc;
+                if (!positionIncrement.Equals(Vector3.zero))
+                {
+                    newPosition = beginPosition + (0.005f * positionIncrement);
+                }
+            }
+
+            UpdateArmStatus(newPosition, newRotation);
+            // 虚拟夹爪当前的位置控制
+            if (hhrHCGripperDis > 0)
+            {
+                UpdateGripperStatus(gripper_1, new Vector3(0, 1.1f, 0.1f + Math.Clamp(HHRGripperNormalizedGripperData(hhrHCGripperDis, 0f, 0.4f), 0f, 0.4f)));
+                UpdateGripperStatus(gripper_2, new Vector3(0, 1.1f, -0.2f - Math.Clamp(HHRGripperNormalizedGripperData(hhrHCGripperDis, 0f, 0.4f), 0f, 0.4f)));
+            }
+            // 判断是否夹住了物体
+            GameObject hhrHCCatchObject = hhrHCControl.GetComponent<HandControlToolControl>().catchObject;
+            if (gripper_catch_object != null && hhrHCCatchObject == null)
+            {
+                hhrHCControl.GetComponent<HandControlToolControl>().catchObject = gripper_catch_object;
+                hhrHCControl.GetComponent<HandControlToolControl>().SendCatchObject();
+            }
+            else if (gripper_catch_object == null && hhrHCCatchObject != null)
+            {
+                hhrHCControl.GetComponent<HandControlToolControl>().catchObject = null;
+                hhrHCControl.GetComponent<HandControlToolControl>().SendReleaseObject();
+            }
+        }
+
         // 监听TouchX的消息
-        if(connectTouch) { 
+        if (connectTouch) { 
             if (TouchX != null && !TouchX.GetComponent<HapticPlugin>().DeviceIdentifier.Equals("Not Connected")) {
                 // 末端点位置
                 touch_newPosition = TouchX.GetComponent<HapticPlugin>().CurrentPosition;
@@ -271,8 +314,8 @@ public class VirtualURControl : MonoBehaviour
                 }
                 Vector3 newRotation = touch_newRotation - touch_oldRotation;
                 // 虚拟夹爪当前的位置控制
-                UpdateGripperStatus(gripper_1, new Vector3(0, 1.1f, 0.1f + Math.Clamp(NormalizedGripperData(touch_newRotation.z, 0f, 0.45f), 0f, 0.45f)));
-                UpdateGripperStatus(gripper_2, new Vector3(0, 1.1f, -0.2f - Math.Clamp(NormalizedGripperData(touch_newRotation.z, 0f, 0.45f), 0f, 0.45f)));
+                UpdateGripperStatus(gripper_1, new Vector3(0, 1.1f, 0.1f + Math.Clamp(TouchXNormalizedGripperData(touch_newRotation.z, 0f, 0.45f), 0f, 0.45f)));
+                UpdateGripperStatus(gripper_2, new Vector3(0, 1.1f, -0.2f - Math.Clamp(TouchXNormalizedGripperData(touch_newRotation.z, 0f, 0.45f), 0f, 0.45f)));
                 touch_oldRotation = touch_newRotation;
             }
         }
@@ -764,6 +807,48 @@ public class VirtualURControl : MonoBehaviour
         }
 
         double value = max_value - (((gripper_value - gripper_min_value) / (gripper_max_value - gripper_min_value)) * (max_value - min_value) + min_value);
+        return ((float)value);
+    }
+
+    private float TouchXNormalizedGripperData(float gripper_value, float min_value = 0f, float max_value = 60f)
+    {
+        if (gripper_value < touchgripper_min_value)
+        {
+            touchgripper_min_value = gripper_value;
+        }
+
+        if (gripper_value > touchgripper_max_value)
+        {
+            touchgripper_max_value = gripper_value;
+        }
+
+        if (touchgripper_max_value == touchgripper_min_value)
+        {
+            return min_value;
+        }
+
+        double value = max_value - (((gripper_value - touchgripper_min_value) / (touchgripper_max_value - touchgripper_min_value)) * (max_value - min_value) + min_value);
+        return ((float)value);
+    }
+
+    private float HHRGripperNormalizedGripperData(float gripper_value, float min_value = 0f, float max_value = 60f)
+    {
+        if (gripper_value < hhrgripper_min_value)
+        {
+            hhrgripper_min_value = gripper_value;
+        }
+
+        if (gripper_value > hhrgripper_max_value)
+        {
+            hhrgripper_max_value = gripper_value;
+        }
+
+        if (hhrgripper_max_value == hhrgripper_min_value)
+        {
+            return min_value;
+        }
+
+        double value = (((gripper_value - hhrgripper_min_value) / (hhrgripper_max_value - hhrgripper_min_value)) * (max_value - min_value) + min_value);
         return ((float)value);
     }
 

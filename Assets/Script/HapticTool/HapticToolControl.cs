@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Text;
 using TMPro;
 using UnityEngine;
@@ -26,12 +28,25 @@ public class HapticToolControl : MonoBehaviour
     Color LerpColor2 = new Color(0.1f, 1, 0.1f);
     float maxHapticValues = 1.5f;       // 触觉传感器最大的值;
 
+    public string recordPath;
+    public bool isRecord = false;
+
     private void Update()
     {
         if (Input.GetKeyDown(KeyCode.T))
         {
             serialPortControl.sendData = "9\r\n";
         }
+        if (Input.GetKeyDown(KeyCode.O))
+        {
+            isRecord = true;
+            File.AppendAllText(recordPath, "\r\n");
+        }
+        if (Input.GetKeyDown(KeyCode.C))
+        {
+            isRecord = false;
+        }
+
 
         string receivedData = serialPortControl.receivedData;
         string fps = serialPortControl.receiveFps.ToString("F2");
@@ -40,12 +55,15 @@ public class HapticToolControl : MonoBehaviour
             HapticFpsText.text = fps;
 
             string[] data = receivedData.Split(" ");
+            float sum  = 0;
             for (int i = 0; i < 9; i++)
             {
-                HapticValues[i] = float.Parse(data[i]);
+                HapticValues[i] = PressOfV(float.Parse(data[i]));
                 Color color = Color.Lerp(LerpColor1, LerpColor2, HapticValues[i] / maxHapticValues);
                 HapticImageArrays[i].color = color;
+                sum += HapticValues[i];
             }
+            sum = sum / 9;
 
             StringBuilder sb = new StringBuilder();
             sb.Append(HapticValues[0].ToString("F2")).Append("  ")
@@ -56,10 +74,16 @@ public class HapticToolControl : MonoBehaviour
                 .Append(HapticValues[5].ToString("F2")).Append("  ").Append("\r\n")
                 .Append(HapticValues[6].ToString("F2")).Append("  ")
                 .Append(HapticValues[7].ToString("F2")).Append("  ")
-                .Append(HapticValues[8].ToString("F2")).Append("  ");
+                .Append(HapticValues[8].ToString("F2")).Append("  ").Append("\r\n")
+                .Append(sum.ToString("F4"));
             receiveTextShow.text = sb.ToString();
 
             serialPortControl.receivedData = "";
+
+            if (isRecord)
+            {
+                File.AppendAllText(recordPath, sum.ToString("F4") + ", ");
+            }
         }
     }
 
@@ -113,5 +137,13 @@ public class HapticToolControl : MonoBehaviour
             // 等待指定的时间
             yield return new WaitForSeconds(delay);
         }
+    }
+
+    // 压力和电压的关系 单位：N
+    float PressOfV(float V)
+    {
+        return ((((((0.587563454520f * V - 4.038473317441f) * V + 10.572566905514f) * V
+               - 13.086856999623f) * V + 8.246471476438f) * V - 2.124044692754f) * V
+            + 0.185276914598f);
     }
 }
